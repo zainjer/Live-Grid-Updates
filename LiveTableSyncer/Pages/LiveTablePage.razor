@@ -1,0 +1,16 @@
+﻿@page "/live-table"
+<h3>Here is the Live table what up dude</h3>
+
+<RadzenButton Click="@ButtonClicked" Text="Hi"></RadzenButton>
+
+<p>Hello @name</p>
+
+
+@code {
+    string name = "Blazor"; 
+    void ButtonClicked()
+    {
+        name = "Radzen";
+    }
+}
+

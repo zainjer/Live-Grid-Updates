@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="LiveTableApi/LiveTableApi.csproj" />
+  <Project Path="LiveTableSyncer/LiveTableSyncer.csproj" />
+</Solution>
