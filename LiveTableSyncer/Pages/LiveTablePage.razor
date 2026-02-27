@@ -1,16 +1,50 @@
-﻿@page "/live-table"
+﻿@using LiveTableSyncer.Models
+@using Services
+@inject IMovieClient MovieClient
+
+@page "/live-table"
 <h3>Here is the Live table what up dude</h3>
 
 <RadzenButton Click="@ButtonClicked" Text="Hi"></RadzenButton>
 
 <p>Hello @name</p>
-
+@if (movies.Count == 0)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <RadzenDataGrid TItem="MovieDto" AllowFiltering="true" AllowColumnResize="true" AllowAlternatingRows="false" FilterMode="FilterMode.Advanced" AllowSorting="true" PageSize="100" AllowPaging="true" PagerHorizontalAlign="HorizontalAlign.Left" ShowPagingSummary="true"
+                    Data="@movies" ColumnWidth="300px" LogicalFilterOperator="LogicalFilterOperator.Or" SelectionMode="DataGridSelectionMode.Single" @bind-Value="selectedMovies">
+        <Columns>
+            <RadzenDataGridColumn TItem="MovieDto" Property="Id" Title="Id" Width="80px" />
+            <RadzenDataGridColumn TItem="MovieDto" Property="Title" Title="Title" />
+            <RadzenDataGridColumn TItem="MovieDto" Property="Author" Title="Author" />
+            <RadzenDataGridColumn TItem="MovieDto" Property="Created" Title="Created" />
+            <RadzenDataGridColumn TItem="MovieDto" Property="Updated" Title="Updated" />
+            <RadzenDataGridColumn TItem="MovieDto" Title="Genres">
+                <Template Context="m">@string.Join(", ", m.Genres)</Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
+}
 
 @code {
-    string name = "Blazor"; 
-    void ButtonClicked()
+
+    IList<MovieDto> selectedMovies = new List<MovieDto>();
+    string name = "Blazor";
+    List<MovieDto> movies = new List<MovieDto>();
+
+    async Task ButtonClicked()
     {
-        name = "Radzen";
+        movies = await MovieClient.GetMovies(500, 1);
     }
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        movies = await MovieClient.GetMovies(500, 1);
+    }
+
 }
 

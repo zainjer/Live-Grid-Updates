@@ -8,6 +8,8 @@ using Microsoft.EntityFrameworkCore;
 using LiveTableApi.Data;
 using LiveTableApi.Data.Entities;
 using Bogus;
+using LiveTableSyncer.Models;
+using LiveTableSyncer.Models;
 
 namespace LiveTableApi.Controllers
 {
@@ -33,23 +35,55 @@ namespace LiveTableApi.Controllers
 
         // GET: api/Movies
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Movie>>> GetMovies()
+        public async Task<ActionResult<IEnumerable<MovieDto>>> GetMovies(int pageSize = 500, int pageCount = 1)
         {
-            return await _context.Movies.ToListAsync();
+            if (pageCount < 1) throw new ArgumentOutOfRangeException(nameof(pageCount));
+            if (pageSize < 1) throw new ArgumentOutOfRangeException(nameof(pageSize));
+
+            var result = await _context.Movies.Include(x=> x.Genres).Skip(((pageCount-1) * pageSize)).Take(pageSize).ToListAsync();
+
+            var moviesDto = new List<MovieDto>() { };
+            foreach (var movie in result)
+            {
+                moviesDto.Add(new MovieDto()
+                {
+                    Id = movie.Id,
+                    Title = movie.Title,
+                    Author = movie.Author,
+                    Description = movie.Description,
+                    Created = movie.Created,
+                    Updated = movie.Updated,
+                    Genres = movie.Genres.Select(x => x.Name).ToList()
+                });
+            } 
+            return moviesDto;
+
         }
 
         // GET: api/Movies/5
         [HttpGet("{id}")]
-        public async Task<ActionResult<Movie>> GetMovie(int id)
+        public async Task<ActionResult<MovieDto>> GetMovie(int id)
         {
-            var movie = await _context.Movies.FindAsync(id);
+            var movie = await _context.Movies
+                .AsNoTracking()
+                .Include(x => x.Genres)
+                .FirstOrDefaultAsync(x => x.Id == id);
 
             if (movie == null)
             {
                 return NotFound();
             }
 
-            return movie;
+            return new MovieDto
+            {
+                Id = movie.Id,
+                Title = movie.Title,
+                Description = movie.Description,
+                Author = movie.Author,
+                Created = movie.Created,
+                Updated = movie.Updated,
+                Genres = movie.Genres.Select(g => g.Name).ToList()
+            };
         }
 
         // PUT: api/Movies/5
