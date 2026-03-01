@@ -10,4 +10,7 @@
         public DateTime Updated { get; set; }
         public List<string> Genres { get; set; } = new List<string>();
     }
+
+    public record MoviesCollectionPageDto(List<MovieDto> Movies, int Count);
+    
 }

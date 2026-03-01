@@ -17,11 +17,26 @@ public class MovieClient : IMovieClient, IDisposable
         _client.Dispose();
     }
 
-    public async Task<List<MovieDto>> GetMovies(int pageSize, int pageCount)
+    public async Task<MoviesCollectionPageDto> GetMovies(int top, int skip, string orderBy="")
     {
-        var response = await _client.GetAsync<List<MovieDto>>($"movies?pageSize={pageSize}&pageCount={pageCount}");
+        var response = await _client.GetAsync<MoviesCollectionPageDto>($"movies?top={top}&skip={skip}&orderBy={orderBy}");
 
-        return response ?? new List<MovieDto>();
+        return response ?? throw new Exception("Failed to fetch movies.");
+    }
+
+    public async Task<MovieDto> UpdateMovie(MovieDto movie)
+    {
+        var request = new RestRequest()
+        {
+            Method = Method.Put,
+            Resource = $"movies/{movie.Id}",
+            RequestFormat = DataFormat.Json,
+            
+        };
+        request.AddBody(movie);
+        //Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(request));
+        var response = await _client.PutAsync<MovieDto>(request) ?? throw new Exception("Response nahi aya from Update");
+        return response;
     }
 
 
@@ -29,6 +44,7 @@ public class MovieClient : IMovieClient, IDisposable
 
 public interface IMovieClient
 {
-    Task<List<MovieDto>> GetMovies(int pageSize, int pageCount);
+    Task<MoviesCollectionPageDto> GetMovies(int top, int skip, string orderBy = "");
+    Task<MovieDto> UpdateMovie(MovieDto movie);
 
 }

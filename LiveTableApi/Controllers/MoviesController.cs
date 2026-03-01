@@ -9,7 +9,6 @@ using LiveTableApi.Data;
 using LiveTableApi.Data.Entities;
 using Bogus;
 using LiveTableSyncer.Models;
-using LiveTableSyncer.Models;
 
 namespace LiveTableApi.Controllers
 {
@@ -35,12 +34,45 @@ namespace LiveTableApi.Controllers
 
         // GET: api/Movies
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<MovieDto>>> GetMovies(int pageSize = 500, int pageCount = 1)
+        public async Task<ActionResult<MoviesCollectionPageDto>> GetMovies(int top = 500, int skip = 0, string orderBy = "")
         {
-            if (pageCount < 1) throw new ArgumentOutOfRangeException(nameof(pageCount));
-            if (pageSize < 1) throw new ArgumentOutOfRangeException(nameof(pageSize));
+            if (top < 1) throw new ArgumentOutOfRangeException(nameof(top));
 
-            var result = await _context.Movies.Include(x=> x.Genres).Skip(((pageCount-1) * pageSize)).Take(pageSize).ToListAsync();
+
+            var queryable = _context.Movies.Include(x => x.Genres).AsQueryable();
+
+
+            if (!string.IsNullOrWhiteSpace(orderBy))
+            {
+                orderBy = orderBy.Trim().ToLower();
+                if (orderBy.Contains("created", StringComparison.OrdinalIgnoreCase))
+                {
+                    queryable = orderBy.Contains("asc") ? queryable.OrderBy(m => m.Created) : queryable.OrderByDescending(m => m.Created);
+                }
+                else if (orderBy.Contains("updated", StringComparison.OrdinalIgnoreCase))
+                {
+                    queryable = orderBy.Contains("asc") ? queryable.OrderBy(m => m.Updated) : queryable.OrderByDescending(m => m.Updated);
+                }
+                else if (orderBy.Contains("title", StringComparison.OrdinalIgnoreCase))
+                {
+                    queryable = orderBy.Contains("asc") ? queryable.OrderBy(m => m.Title) : queryable.OrderByDescending(m => m.Title);
+                }
+                else if (orderBy.Contains("author", StringComparison.OrdinalIgnoreCase))
+                {
+                    queryable = orderBy.Contains("asc") ? queryable.OrderBy(m => m.Author) : queryable.OrderByDescending(m => m.Author);
+                }
+                else if (orderBy.Contains("id", StringComparison.OrdinalIgnoreCase))
+                {
+                    queryable = orderBy.Contains("asc") ? queryable.OrderBy(m => m.Id) : queryable.OrderByDescending(m => m.Id);
+                }
+                else
+                {
+                    queryable = queryable.OrderBy(m => m.Id);
+                }
+            }
+            else { queryable = queryable.OrderBy(m => m.Id); }
+
+            var result = await queryable.Skip(skip).Take(top).ToListAsync();
 
             var moviesDto = new List<MovieDto>() { };
             foreach (var movie in result)
@@ -55,8 +87,11 @@ namespace LiveTableApi.Controllers
                     Updated = movie.Updated,
                     Genres = movie.Genres.Select(x => x.Name).ToList()
                 });
-            } 
-            return moviesDto;
+            }
+
+            var count = await _context.Movies.CountAsync();
+            var collectionPageDto = new MoviesCollectionPageDto(moviesDto, count);
+            return collectionPageDto;
 
         }
 
@@ -89,14 +124,25 @@ namespace LiveTableApi.Controllers
         // PUT: api/Movies/5
         // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
         [HttpPut("{id}")]
-        public async Task<IActionResult> PutMovie(int id, Movie movie)
+        public async Task<ActionResult<MovieDto>> PutMovie(int id, MovieDto movieDto)
         {
-            if (id != movie.Id)
+            if (id != movieDto.Id)
             {
                 return BadRequest();
             }
+            var movieEntity = await _context.Movies.Include(x => x.Genres).FirstOrDefaultAsync(x => x.Id == id);
 
-            _context.Entry(movie).State = EntityState.Modified;
+            if (movieEntity == null)
+            {
+                return NotFound();
+            }
+            movieEntity.Title = movieDto.Title;
+            movieEntity.Description = movieDto.Description;
+            movieEntity.Author = movieDto.Author;
+            movieEntity.Updated = movieDto.Updated = DateTime.UtcNow;
+
+
+            _context.Entry(movieEntity).State = EntityState.Modified;
 
             try
             {
@@ -114,7 +160,7 @@ namespace LiveTableApi.Controllers
                 }
             }
 
-            return NoContent();
+            return movieDto;
         }
 
         // POST: api/Movies

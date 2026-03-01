@@ -3,9 +3,8 @@
 @inject IMovieClient MovieClient
 
 @page "/live-table"
-<h3>Here is the Live table what up dude</h3>
+<h3>Here is the Live table what up dude does it work</h3>
 
-<RadzenButton Click="@ButtonClicked" Text="Hi"></RadzenButton>
 
 <p>Hello @name</p>
 @if (movies.Count == 0)
@@ -14,15 +13,53 @@
 }
 else
 {
-    <RadzenDataGrid TItem="MovieDto" AllowFiltering="true" AllowColumnResize="true" AllowAlternatingRows="false" FilterMode="FilterMode.Advanced" AllowSorting="true" PageSize="100" AllowPaging="true" PagerHorizontalAlign="HorizontalAlign.Left" ShowPagingSummary="true"
-                    Data="@movies" ColumnWidth="300px" LogicalFilterOperator="LogicalFilterOperator.Or" SelectionMode="DataGridSelectionMode.Single" @bind-Value="selectedMovies">
+    <RadzenDataGrid TItem="MovieDto"
+                    @ref="grid"
+                    @bind-Value="selectedMovies"
+                    Data="@movies"
+                    Count="@count"
+                    LoadData="@LoadGridData"
+                    CellClick="@OnCellClick"
+                    AllowPaging="true"
+                    PageSize="100"
+                    AllowSorting="true"
+                    AllowFiltering="true"
+                    AllowColumnResize="true"
+                    AllowAlternatingRows="false"
+                    Sort="@(args => Reset())" 
+                    Page="@(args => Reset())" 
+                    Filter="@(args => Reset())"
+                    FilterMode="FilterMode.Advanced"
+                    LogicalFilterOperator="LogicalFilterOperator.Or"
+                    SelectionMode="DataGridSelectionMode.Single"
+                    ColumnWidth="300px"
+                    PagerHorizontalAlign="HorizontalAlign.Left"
+                    ShowPagingSummary="true"
+                    IsLoading="@isRefreshingGrid">
         <Columns>
-            <RadzenDataGridColumn TItem="MovieDto" Property="Id" Title="Id" Width="80px" />
-            <RadzenDataGridColumn TItem="MovieDto" Property="Title" Title="Title" />
-            <RadzenDataGridColumn TItem="MovieDto" Property="Author" Title="Author" />
-            <RadzenDataGridColumn TItem="MovieDto" Property="Created" Title="Created" />
-            <RadzenDataGridColumn TItem="MovieDto" Property="Updated" Title="Updated" />
-            <RadzenDataGridColumn TItem="MovieDto" Title="Genres">
+            <RadzenDataGridColumn TItem="MovieDto" Property="Id" Title="Id" Width="80px" ></RadzenDataGridColumn>
+            
+            <RadzenDataGridColumn TItem="MovieDto" Property="Title" Title="Title" IsInEditMode="@IsEditing" >
+                <Template Context="movie">
+                    <RadzenText Text="@(movie.Title)" />
+                </Template>
+                <EditTemplate Context="movie">
+                    <RadzenTextBox @ref="editor" Change="@(args => Update())" Name="Title" @bind-Value="movie.Title" Style="width:200px; display: block" />
+                    <RadzenRequiredValidator Text="Title is required" Component="Title" Popup="true" />
+                </EditTemplate>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="MovieDto" Property="Author" Title="Author" IsInEditMode="@IsEditing" >
+                <Template Context="movie">
+                    <RadzenText Text="@(movie.Author)"/>
+                </Template>
+                <EditTemplate Context="movie">
+                    <RadzenTextBox @ref="editor" Change="@(args => Update())" Name="Author" @bind-Value="movie.Author" Style="width:200px; display: block"/>
+                    <RadzenRequiredValidator Text="Author is required" Component="Author" Popup="true" />
+                </EditTemplate>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="MovieDto" Property="Created" Title="Created"></RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="MovieDto" Property="Updated" Title="Updated" ></RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="MovieDto" Title="Genres" Sortable="false">
                 <Template Context="m">@string.Join(", ", m.Genres)</Template>
             </RadzenDataGridColumn>
         </Columns>
@@ -30,20 +67,128 @@ else
 }
 
 @code {
+    RadzenDataGrid<MovieDto> grid;
+    string columnEditing;
 
-    IList<MovieDto> selectedMovies = new List<MovieDto>();
-    string name = "Blazor";
+    IRadzenFormComponent editor;
+    bool editorFocused;
+
+    bool isRefreshingGrid = false;
+
     List<MovieDto> movies = new List<MovieDto>();
+    List<MovieDto> moviesToUpdate = new List<MovieDto>();
+    int count = 1000;
+    IList<MovieDto> selectedMovies = new List<MovieDto>();
+
+    string name = "Blazor";
 
     async Task ButtonClicked()
     {
-        movies = await MovieClient.GetMovies(500, 1);
+        var result = await MovieClient.GetMovies(100, 0);
+        count = result.Count;
+        movies = result.Movies;
     }
 
 
     protected override async Task OnInitializedAsync()
     {
-        movies = await MovieClient.GetMovies(500, 1);
+        var result = await MovieClient.GetMovies(100,0);
+        count = result.Count;
+        movies = result.Movies;
+    }
+
+
+    async Task LoadGridData(LoadDataArgs args)
+    {
+        Console.WriteLine(args.OrderBy);
+        var result = await MovieClient.GetMovies(top: args.Top ?? 500, skip: args.Skip ?? 0, orderBy: args.OrderBy ?? "");
+        movies = result.Movies;
+        count = result.Count;
+    }
+
+
+    async Task OnCellClick(DataGridCellMouseEventArgs<MovieDto> args)
+    {
+        if (!grid.IsValid ||
+            (moviesToUpdate.Contains(args?.Data) && columnEditing == args?.Column?.Property))
+        {
+            Console.WriteLine("Dude just returned on you");
+            return;
+        }
+
+        // Record the previous edited field, if you're not using IRevertibleChangeTracking to track object changes
+        // if (moviesToUpdate.Any())
+        // {
+        //     await Update();
+        // }
+
+        // This sets which column is currently being edited.
+        columnEditing = args?.Column?.Property;
+
+        // This sets the Item to be edited.
+        await EditRow(args.Data);
+    }
+
+    async Task EditRow(MovieDto movie)
+    {
+        Reset();
+
+        moviesToUpdate.Add(movie);
+
+        await grid.EditRow(movie);
+    }
+
+    async Task Update()
+    {
+        editorFocused = false;
+
+        if (moviesToUpdate.Any())
+        {
+            isRefreshingGrid = true;
+            var updatedMovie = await MovieClient.UpdateMovie(moviesToUpdate.First());
+            Console.WriteLine("update api called");           
+            await grid.Reload();
+            isRefreshingGrid = false;
+        }
+    }
+
+  
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+
+        if (!editorFocused && editor != null)
+        {
+            editorFocused = true;
+
+            try
+            {
+                await editor.FocusAsync();
+            }
+            catch
+            {
+                //
+            }
+        }
+    }
+    void Reset(MovieDto movie = null)
+    {
+        editorFocused = false;
+
+        if (movie != null)
+        {
+            moviesToUpdate.Remove(movie);
+        }
+        else
+        {
+            moviesToUpdate.Clear();
+        }
+    }
+
+    bool IsEditing(string columnName, MovieDto movie)
+    {
+        // Comparing strings is quicker than checking the contents of a List, so let the property check fail first.
+        return columnEditing == columnName && moviesToUpdate.Contains(movie);
     }
 
 }
