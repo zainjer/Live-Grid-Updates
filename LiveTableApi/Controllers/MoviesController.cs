@@ -1,14 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+﻿using Bogus;
+using LiveTableApi.Data;
+using LiveTableApi.Data.Entities;
+using LiveTableApi.Hubs;
+using LiveTableSyncer.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using LiveTableApi.Data;
-using LiveTableApi.Data.Entities;
-using Bogus;
-using LiveTableSyncer.Models;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace LiveTableApi.Controllers
 {
@@ -18,10 +19,12 @@ namespace LiveTableApi.Controllers
     {
         private readonly AppDbContext _context;
         private readonly Faker<Movie> _movieFaker;
+        private readonly MovieUpdatesHub _movieUpdatesHub;
 
-        public MoviesController(AppDbContext context)
+        public MoviesController(AppDbContext context, MovieUpdatesHub movieUpdatesHub)
         {
             _context = context;
+            _movieUpdatesHub = movieUpdatesHub;
             var genres = _context.Genres;
             _movieFaker = new Faker<Movie>()
                 .RuleFor(m => m.Title, f => $"{f.Name.FirstName()}'s {f.Commerce.ProductName()} from {f.Company.CompanyName()} ")
@@ -147,6 +150,7 @@ namespace LiveTableApi.Controllers
             try
             {
                 await _context.SaveChangesAsync();
+                await _movieUpdatesHub.SendMovieUpdate(movieEntity.Id);
             }
             catch (DbUpdateConcurrencyException)
             {

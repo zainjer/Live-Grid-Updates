@@ -1,8 +1,12 @@
 ﻿@using LiveTableSyncer.Models
 @using Services
+@using Microsoft.AspNetCore.SignalR.Client
+@inject NavigationManager Navigation
 @inject IMovieClient MovieClient
+@implements IAsyncDisposable
 
 @page "/live-table"
+    
 <h3>Here is the Live table what up dude does it work</h3>
 
 
@@ -26,8 +30,8 @@ else
                     AllowFiltering="true"
                     AllowColumnResize="true"
                     AllowAlternatingRows="false"
-                    Sort="@(args => Reset())" 
-                    Page="@(args => Reset())" 
+                    Sort="@(args => Reset())"
+                    Page="@(args => Reset())"
                     Filter="@(args => Reset())"
                     FilterMode="FilterMode.Advanced"
                     LogicalFilterOperator="LogicalFilterOperator.Or"
@@ -37,28 +41,28 @@ else
                     ShowPagingSummary="true"
                     IsLoading="@isRefreshingGrid">
         <Columns>
-            <RadzenDataGridColumn TItem="MovieDto" Property="Id" Title="Id" Width="80px" ></RadzenDataGridColumn>
-            
-            <RadzenDataGridColumn TItem="MovieDto" Property="Title" Title="Title" IsInEditMode="@IsEditing" >
+            <RadzenDataGridColumn TItem="MovieDto" Property="Id" Title="Id" Width="80px"></RadzenDataGridColumn>
+
+            <RadzenDataGridColumn TItem="MovieDto" Property="Title" Title="Title" IsInEditMode="@IsEditing">
                 <Template Context="movie">
                     <RadzenText Text="@(movie.Title)" />
                 </Template>
                 <EditTemplate Context="movie">
-                    <RadzenTextBox @ref="editor" Change="@(args => Update())" Name="Title" @bind-Value="movie.Title" Style="width:200px; display: block" />
+                    <RadzenTextBox @ref="editor" Change="@(args => Update())" Name="Title" @bind-Value="movie.Title" />
                     <RadzenRequiredValidator Text="Title is required" Component="Title" Popup="true" />
                 </EditTemplate>
             </RadzenDataGridColumn>
-            <RadzenDataGridColumn TItem="MovieDto" Property="Author" Title="Author" IsInEditMode="@IsEditing" >
+            <RadzenDataGridColumn TItem="MovieDto" Property="Author" Title="Author" IsInEditMode="@IsEditing">
                 <Template Context="movie">
-                    <RadzenText Text="@(movie.Author)"/>
+                    <RadzenText Text="@(movie.Author)" />
                 </Template>
                 <EditTemplate Context="movie">
-                    <RadzenTextBox @ref="editor" Change="@(args => Update())" Name="Author" @bind-Value="movie.Author" Style="width:200px; display: block"/>
+                    <RadzenTextBox @ref="editor" Change="@(args => Update())" Name="Author" @bind-Value="movie.Author"/>
                     <RadzenRequiredValidator Text="Author is required" Component="Author" Popup="true" />
                 </EditTemplate>
             </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="MovieDto" Property="Created" Title="Created"></RadzenDataGridColumn>
-            <RadzenDataGridColumn TItem="MovieDto" Property="Updated" Title="Updated" ></RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="MovieDto" Property="Updated" Title="Updated"></RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="MovieDto" Title="Genres" Sortable="false">
                 <Template Context="m">@string.Join(", ", m.Genres)</Template>
             </RadzenDataGridColumn>
@@ -82,6 +86,8 @@ else
 
     string name = "Blazor";
 
+    private HubConnection? hubConnection;
+
     async Task ButtonClicked()
     {
         var result = await MovieClient.GetMovies(100, 0);
@@ -92,15 +98,41 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        var result = await MovieClient.GetMovies(100,0);
+        var result = await MovieClient.GetMovies(100, 0);
         count = result.Count;
         movies = result.Movies;
+
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(new Uri(Constants.SERVER_URL+"/movieupdateshub"))
+            .Build();
+
+        hubConnection.On<int>("ReceiveMovieUpdate", async (movieId) =>
+        {
+            Console.WriteLine("Movie Changed:" + movieId);
+            var updatedMovie = await MovieClient.GetMovie(movieId);
+            if (updatedMovie != null)
+            {
+                var index = movies.FindIndex(m => m.Id == movieId);
+                if (index != -1)
+                {
+                    movies[index] = updatedMovie;
+                    selectedMovies.Add(updatedMovie);
+                    await this.grid.SelectRow(updatedMovie);
+                    await this.grid.Reload();
+
+                }
+            }
+        });
+
+        await hubConnection.StartAsync();
     }
 
 
+    public bool IsConnected =>
+       hubConnection?.State == HubConnectionState.Connected;
+
     async Task LoadGridData(LoadDataArgs args)
     {
-        Console.WriteLine(args.OrderBy);
         var result = await MovieClient.GetMovies(top: args.Top ?? 500, skip: args.Skip ?? 0, orderBy: args.OrderBy ?? "");
         movies = result.Movies;
         count = result.Count;
@@ -116,13 +148,6 @@ else
             return;
         }
 
-        // Record the previous edited field, if you're not using IRevertibleChangeTracking to track object changes
-        // if (moviesToUpdate.Any())
-        // {
-        //     await Update();
-        // }
-
-        // This sets which column is currently being edited.
         columnEditing = args?.Column?.Property;
 
         // This sets the Item to be edited.
@@ -144,15 +169,11 @@ else
 
         if (moviesToUpdate.Any())
         {
-            isRefreshingGrid = true;
             var updatedMovie = await MovieClient.UpdateMovie(moviesToUpdate.First());
-            Console.WriteLine("update api called");           
-            await grid.Reload();
-            isRefreshingGrid = false;
         }
     }
 
-  
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender);
@@ -189,6 +210,13 @@ else
     {
         // Comparing strings is quicker than checking the contents of a List, so let the property check fail first.
         return columnEditing == columnName && moviesToUpdate.Contains(movie);
+    }
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
     }
 
 }
